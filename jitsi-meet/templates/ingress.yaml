@@ -1,0 +1,26 @@
+{{- if .Values.ingress }}
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: {{ include "jitsi-meet.name" . }}-ingress
+  annotations:
+    helm.sh/hook: post-install
+    kubernetes.io/elb.port: "443"
+    kubernetes.io/ingress.class: nginx
+    kubernetes.io/tls-acme: "true"
+    certmanager.k8s.io/cluster-issuer: letsencrypt
+spec:
+  tls:
+    - hosts:
+        - {{ .Values.domain.host }}
+      secretName: {{ include "jitsi-meet.name" . }}-cert
+  rules:
+    - host: {{ .Values.domain.host }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName:  {{ include "jitsi-meet.name" . }}-web
+              servicePort: 80
+
+{{- end }}

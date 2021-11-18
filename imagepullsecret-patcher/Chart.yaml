@@ -1,0 +1,4 @@
+apiVersion: v2
+description: imagepullsecret-patcher
+name: imagepullsecret-patcher
+version: 0.1.0-1c3801acd56c58838d377f397c98bec37b7c2fd6

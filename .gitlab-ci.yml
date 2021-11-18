@@ -1,0 +1,67 @@
+variables:
+  LINT_IMAGE: alpine/helm:3.2.4
+  DEPLOY_IMAGE: "iits/helm-charts-manager:1.1.12"
+stages:
+  - lint
+  - plan
+  - deploy
+lint:
+  stage: lint
+  image: $LINT_IMAGE
+  script:
+    - helm lint --with-subcharts */
+
+deploy-bootstrap:
+  stage: deploy
+  environment:
+    name: bootstrap
+  image: $DEPLOY_IMAGE
+  services:
+    - docker:18-dind
+  script:
+    - create_kubctl_config
+    - helm repo update
+    - helm-charts-manager apply --update --auto-approve --charts crds
+    - helm-charts-manager apply --update --auto-approve --charts imagepullsecret-patcher
+    - helm-charts-manager apply --update --auto-approve
+plan-dev:
+  stage: plan
+  environment:
+    name: dev
+  image: $DEPLOY_IMAGE
+  script:
+    - create_kubctl_config
+    - helm-charts-manager plan --update --auto-approve --charts crds
+    - helm-charts-manager plan --update --auto-approve --charts imagepullsecret-patcher
+    - helm-charts-manager plan --update --auto-approve
+deploy-dev:
+  stage: deploy
+  when: manual
+  environment:
+    name: dev
+  image: $DEPLOY_IMAGE
+  services:
+    - docker:18-dind
+  script:
+    - create_kubctl_config
+    - helm-charts-manager apply --update --auto-approve --charts crds
+    - helm-charts-manager apply --update --auto-approve --charts imagepullsecret-patcher
+    - helm-charts-manager apply --update --auto-approve
+
+.deploy_helpers: &deploy_helpers |
+  function create_kubctl_config(){
+    apk add --update openssl
+    path="/config"
+    current_date=$(date +'%a, %d %b %Y %H:%M:%S %z')
+    bucket_name="kubeconfig-otc-customer-success-$CI_ENVIRONMENT_NAME"
+    request_string="GET\n\n\n${current_date}\n/${bucket_name}${path}"
+    signed_reqest=$(echo -en "${request_string}" | openssl sha1 -hmac "${AWS_SECRET_ACCESS_KEY}" -binary | base64)
+    curl -H "Host: ${bucket_name}.obs.eu-de.otc.t-systems.com" \
+         -H "Date: $current_date" \
+         -H "Authorization: AWS ${AWS_ACCESS_KEY_ID}:${signed_reqest}" \
+         "${bucket_name}.obs.eu-de.otc.t-systems.com${path}" > /root/.kube/config
+  }
+before_script:
+  - *deploy_helpers
+  # If Vault has not been installed yet, this will not work. Then we need the "|| true" so that the pipeline does not fail.
+  - export VAULT_TOKEN=$(vault write -field=token auth/gitlab/login role_id=$VAULT_ROLE_ID secret_id=$VAULT_SECRET_ID) || true

@@ -1,0 +1,31 @@
+env:
+  - STAGE: kubectl config current-context
+  - GIT_VERSION: git rev-parse --verify HEAD
+  - GIT_LATEST_TAG: git fetch --depth 100 && git describe --abbrev=0 --tags
+  - RELEASE_VERSION: echo ${GIT_LATEST_TAG}-${GIT_VERSION}
+  - WORKADVENTURE_DOMAIN: echo workadventure.showcase.guardians-of-the-otc.com
+  - JITSI_DOMAIN: echo jitsi.showcase.guardians-of-the-otc.com
+  - ELB_ID: vault kv get -field elb_id secret/${STAGE}/elb_info
+  - DOCKERHUB_IITS_TOKEN_BASE_64: vault kv get -field docker_hub_iits_token secret/common/dockerhub
+
+commandSpec:
+  applyCommandArgs: "upgrade -f <chartName>/values.yaml --create-namespace --atomic --install --wait --timeout 15m <chartName> <chartName>"
+  planCommandArgs: "diff -q -f <chartName>/values.yaml upgrade --allow-unreleased <chartName> <chartName>"
+
+defaultHelmArgs:
+  crds:
+  imagepullsecret-patcher: -n imagepullsecret-patcher --set dockerConfigJsonBase64Encoded=${DOCKERHUB_IITS_TOKEN_BASE_64}
+  cert-manager: -n cert-manager --set elbID=${ELB_ID}
+  traefik: -n default --set traefik.service.annotations."kubernetes\\.io/elb\\.id"=${ELB_ID}
+  workadventure: -n workadventure --set domain=${WORKADVENTURE_DOMAIN},env.jitsiUrl=${JITSI_DOMAIN}
+  jitsi-meet: -n jitsi --set domain.host=${JITSI_DOMAIN},publicIP=${PUBLIC_IP}
+
+
+stages:
+  showcase:
+    crds:
+    imagepullsecret-patcher:
+    cert-manager: -n cert-manager --set elbID=${ELB_ID}
+    traefik: -n default --set traefik.service.annotations."kubernetes\\.io/elb\\.id"=${ELB_ID}
+    jitsi-meet:
+    workadventure:
